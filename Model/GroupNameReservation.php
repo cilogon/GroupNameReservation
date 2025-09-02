@@ -14,6 +14,8 @@ class GroupNameReservation extends AppModel {
   );
 
   public $cmPluginType = "other";
+  
+  public $displayField = "description";
 
   // Validation rules for table elements
   public $validate = array(

@@ -4,6 +4,7 @@ App::uses('CakeEventListener', 'Event');
 App::uses('CakeEvent', 'Event');
 App::uses('CakeSession', 'Model/Datasource');
 App::uses("GroupNameReservation", "GroupNameReservation.Model");
+App::uses('Router', 'Routing');
 
 class GroupNameReservationListener implements CakeEventListener {
 
@@ -14,6 +15,7 @@ class GroupNameReservationListener implements CakeEventListener {
   }
 
   public function checkGroupName(CakeEvent $event) {
+  
     // The subject of the event is a Model object.
     $model = $event->subject();
     // We only intend to intercept the CoGroup model.
@@ -37,21 +39,46 @@ class GroupNameReservationListener implements CakeEventListener {
       }
     }
 
-    // Get the authenticated user.
-    $user = CakeSession::read('Auth.User');
-
-    // Is the authenticated user a platform admin?
-    $isPlatformAdmin = $user['cos']['COmanage']['groups']['CO:admins']['member'] ?? false;
-
     //get the CO id for the group 
     $coId = $group['CoGroup']['co_id'];
 
-    // Is the authenticated user a CO admin for the active CO?
+    // Get the authenticated user.
+    $user = CakeSession::read('Auth.User');
+
+    //get the Request so we can determine if it is restful
+    $request = Router::getRequest();
+
+    // Check whether the authenticated user is an admin - this must be done in different ways for API vs UI users
     $isCoAdmin = false;
-    foreach($user['cos'] as $co) {
-      if($co['co_id'] == $coId) {
-        $isCoAdmin = $co['groups']['CO:admins']['member'] ?? false;
-        break;
+    $restful = false;
+
+    if ($request->is('restful')) {
+      $restful = true;
+
+      // $user is an API user. Determine whether they are a Platform, Privileged CO, or not-privileged CO API user
+      //First get the CO number for the COmanage CO
+
+      $Co = ClassRegistry::init('Co');
+      $platformId = $Co->getCOmanageCOID();
+
+      // Is the authenticated user a platform API User? We will consider this a platform admin.?
+      $isPlatformAdmin = ($user['co_id'] == $platformId);;
+   
+      // we wouldn't get here unless the API user was attached to the group's CO. 
+      // Determine if they are privileged or not. A privileged CO API user will be considered a CO admin.
+      $isCoAdmin = $user['privileged'];
+
+    } else {  // not restful
+       
+      // Is the authenticated user a platform admin?
+      $isPlatformAdmin = $user['cos']['COmanage']['groups']['CO:admins']['member'] ?? false;
+
+      // Is the authenticated user a CO admin for the active CO?
+      foreach($user['cos'] as $co) {
+        if($co['co_id'] == $coId) {
+          $isCoAdmin = $co['groups']['CO:admins']['member'] ?? false;
+          break;
+        }
       }
     }
 
@@ -90,20 +117,28 @@ class GroupNameReservationListener implements CakeEventListener {
       if($match == 0) {
         continue;
       } else {
-        // Set the Message stored in the session and used by the Flash component.
-        // We append a new message to any existing messasges.
-        $messages = (array)CakeSession::read('Message');
 
-        $newMessage = array(
-          'message' => $res['GroupNameReservation']['error_message'], 
-          'key' => 'error',
-          'element' => 'default',
-          'params' => array()
-        );
+        if (!$restful) {
 
-        $messages[] = $newMessage;
+          // Set the Message stored in the session and used by the Flash component.
+          // We append a new message to any existing messages.
+          $messages = (array)CakeSession::read('Message');
 
-        CakeSession::write('Message.' . 'error', $messages);
+          $newMessage = array(
+            'message' => $res['GroupNameReservation']['error_message'], 
+            'key' => 'error',
+            'element' => 'default',
+            'params' => array()
+          );
+
+          $messages[] = $newMessage;
+
+          CakeSession::write('Message.' . 'error', $messages);
+        } else { //restful
+ 
+          throw new ForbiddenException($res['GroupNameReservation']['error_message']);
+
+        }
 
         // Return false to prevent the save.
         return false;
