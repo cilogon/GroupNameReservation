@@ -51,7 +51,7 @@ class GroupNameReservation extends AppModel {
 
   public function cmPluginMenus() {
     return array(
-      "coconfig" => array(_txt('ct.group_name_reservations.1') =>
+      "coconfig" => array(_txt('ct.group_name_reservations.pl') =>
         array('icon'       => 'done_all',
               'controller' => 'group_name_reservations',
               'action'     => 'index')
